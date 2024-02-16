@@ -41,6 +41,12 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 task copyJarToBin(type: Copy) {
-    from "build/libs/ubarial-0.0.1-SNAPSHOT.jar"
+    from "build/libs/Ubarial-back-0.0.1-SNAPSHOT.jar"
     into "xinfra/docker/"
 }
+
+jar {
+    enabled = true
+}
+
+build.finalizedBy copyJarToBin
