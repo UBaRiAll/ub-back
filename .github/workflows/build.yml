@@ -7,7 +7,7 @@ on:
     branches: ["main"]
 env:
   AWS_REGION: ap-northeast-2
-  ECR_REPOSITORY: ub-ecr-repo
+  ECR_REPOSITORY: ub-ecr
 
 jobs:
   build:
