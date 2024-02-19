@@ -1,0 +1,115 @@
+name: CI/CD
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY: ub-ecr-repo
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      IMAGE_TAG: ${{ steps.set-var.outputs.IMAGE_TAG }}
+
+    steps:
+      - name: CheckOut Source
+        uses: actions/checkout@v3
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v3
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Change Execute Mode
+        run: chmod 775 gradlew
+
+      - name: Install MySQL
+        uses: mirromutth/mysql-action@v1.1
+        with:
+          host port: 3306
+          container port: 3306
+          mysql version: '8.0'
+          mysql database: 'istory'
+          mysql root password: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+          mysql username: ${{ secrets.MYSQL_USER }}
+          mysql password: ${{ secrets.MYSQL_PASSWORD }}
+
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@bd5760595778326ba7f1441bcf7e88b49de61a25 # v2.6.0
+        with:
+          arguments: build
+
+      - name: Configuration AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Get image tag(version)
+        id: image
+        run: |
+          VERSION=$(echo ${{ github.sha }} | cut -c1-8)
+          echo VERSION=$VERSION
+          echo "::set-output name=version::$VERSION"
+
+      # - name: Set var
+      #   id: set-var
+      #   run: |
+      #     echo ::set-output name=ECR_REGISTRY::${{ steps.login-ecr.outputs.registry }}
+      #     echo ::set-output name=ECR_REPOSITORY::demo
+      #     echo ::set-output name=IMAGE_TAG::$(cat VERSION)
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: image-info
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ steps.image.outputs.version }}
+        run: |
+          echo "registry=$ECR_REGISTRY" >> $GITHUB_ENV
+          echo "repository=$ECR_REPOSITORY" >> $GITHUB_ENV
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_ENV
+          echo "::set-output name=ecr_repository::$ECR_REPOSITORY"
+          echo "::set-output name=image_tag::$IMAGE_TAG"
+          # docker build ./xinfra/docker -t ${{ steps.set-var.outputs.ECR_REGISTRY }}/${{ steps.set-var.outputs.ECR_REPOSITORY }}:${{ steps.set-var.outputs.IMAGE_TAG }} -f ./xinfra/docker/Dockerfile
+          # docker push ${{ steps.set-var.outputs.ECR_REGISTRY }}/${{ steps.set-var.outputs.ECR_REPOSITORY }}:${{ steps.set-var.outputs.IMAGE_TAG }}
+          docker build --cache-from=$ECR_REGISTRY/$ECR_REPOSITORY:latest --build-arg BUILDKIT_INLINE_CACHE=1 ./xinfra/docker -t $ECR_REGISTRY/$ECR_REPOSITORY:latest -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG 
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY --all-tags
+
+      - name: Setup Kustomize
+        uses: imranismail/setup-kustomize@v1
+
+      - name: Checkout kustomize repository
+        uses: actions/checkout@v3
+        with:
+          repository: UBaRiAll/k8s-manifest-repo
+          ref: main
+          token: ${{ secrets.ACTION_TOKEN_K8S }}
+          path: k8s-manifest-repo
+
+      - name: Update Kubernetes resources
+        run: |
+          echo ${{ env.registry }}
+          echo ${{ env.repository }}
+          echo ${{ env.image_tag }}
+          cd k8s-manifest-repo/kustomize/overlays/
+          kustomize edit set image ${{ env.registry }}/${{ env.repository }}=${{ env.registry }}/${{ env.repository }}:${{ env.image_tag }}
+          cat kustomization.yaml
+
+      - name: Commit files
+        run: |
+          cd k8s-manifest-repo
+          git config --global user.email "choiboyuna@gmail.com"
+          git config --global user.name "boyuna"
+          git commit -am "Update image tag"
+          git push -u origin main
