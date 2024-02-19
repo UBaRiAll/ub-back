@@ -62,13 +62,6 @@ jobs:
           echo VERSION=$VERSION
           echo "::set-output name=version::$VERSION"
 
-      # - name: Set var
-      #   id: set-var
-      #   run: |
-      #     echo ::set-output name=ECR_REGISTRY::${{ steps.login-ecr.outputs.registry }}
-      #     echo ::set-output name=ECR_REPOSITORY::demo
-      #     echo ::set-output name=IMAGE_TAG::$(cat VERSION)
-
       - name: Build, tag, and push image to Amazon ECR
         id: image-info
         env:
@@ -81,8 +74,6 @@ jobs:
           echo "image_tag=$IMAGE_TAG" >> $GITHUB_ENV
           echo "::set-output name=ecr_repository::$ECR_REPOSITORY"
           echo "::set-output name=image_tag::$IMAGE_TAG"
-          # docker build -t ${{ steps.set-var.outputs.ECR_REGISTRY }}/${{ steps.set-var.outputs.ECR_REPOSITORY }}:${{ steps.set-var.outputs.IMAGE_TAG }} -f Dockerfile
-          # docker push ${{ steps.set-var.outputs.ECR_REGISTRY }}/${{ steps.set-var.outputs.ECR_REPOSITORY }}:${{ steps.set-var.outputs.IMAGE_TAG }}
           docker build --cache-from=$ECR_REGISTRY/$ECR_REPOSITORY:latest --build-arg BUILDKIT_INLINE_CACHE=1 -t $ECR_REGISTRY/$ECR_REPOSITORY:latest -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG 
           docker push $ECR_REGISTRY/$ECR_REPOSITORY --all-tags
 
