@@ -1,5 +1,5 @@
 name: CI/CD
-#test
+
 on:
   push:
     branches: ["main"]
@@ -93,7 +93,7 @@ jobs:
           echo ${{ env.registry }}
           echo ${{ env.repository }}
           echo ${{ env.image_tag }}
-          cd k8s-manifest-repo/kustomize/overlays/
+          cd k8s-manifest-repo/kustomize/overlays/prod/
           kustomize edit set image ${{ env.registry }}/${{ env.repository }}=${{ env.registry }}/${{ env.repository }}:${{ env.image_tag }}
           cat kustomization.yaml
 
